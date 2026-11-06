@@ -1,0 +1,22 @@
+{
+  "transport": "http://localhost:3000 same-origin proxy to FastAPI",
+  "checks": {
+    "/health": "PASS",
+    "/dashboard": "PASS",
+    "/agents": "PASS",
+    "/mandates": "PASS",
+    "/suppliers": "PASS",
+    "/settings": "PASS",
+    "/transactions": "PASS",
+    "/redteam/scenarios": "PASS",
+    "valid_workflow": "PASS",
+    "poisoned_workflow": "PASS",
+    "approval_workflow": "PASS",
+    "human_sign_and_execute": "PASS",
+    "provenance_and_evidence": "PASS",
+    "lab_trial_evidence": "PASS",
+    "audit_verify": "PASS",
+    "logout_invalidates_session": "PASS"
+  },
+  "all_passed": true
+}
