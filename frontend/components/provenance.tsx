@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Json } from "../lib/api";
+import { useTheme } from "./theme-provider";
 export default function Provenance({
   graph,
   onSelect,
@@ -17,6 +18,7 @@ export default function Provenance({
   graph: Json;
   onSelect: (data: Json) => void;
 }) {
+  const { theme } = useTheme();
   const { nodes, edges } = useMemo(() => {
     const cols: Record<string, number> = {
       source: 0,
@@ -47,9 +49,9 @@ export default function Provenance({
           ),
         },
         style: {
-          background: "#141D30",
-          color: "#F8FAFC",
-          border: `1px solid ${n.trust === "EXTERNAL_UNVERIFIED" ? "#a16207" : "#33496b"}`,
+          background: "var(--graph-node)",
+          color: "var(--graph-foreground)",
+          border: `1px solid ${n.trust === "EXTERNAL_UNVERIFIED" ? "var(--graph-suspicious)" : "var(--graph-node-border)"}`,
           width: 215,
           borderRadius: 10,
         },
@@ -59,7 +61,7 @@ export default function Provenance({
       id: "edge-" + i,
       ...e,
       animated: true,
-      style: { stroke: "#6366F1", strokeWidth: 1.4 },
+      style: { stroke: "var(--graph-edge)", strokeWidth: 1.4 },
     }));
     return { nodes, edges };
   }, [graph]);
@@ -74,11 +76,11 @@ export default function Provenance({
         onNodeClick={(_, node) =>
           onSelect(graph.nodes.find((n: Json) => n.id === node.id))
         }
-        colorMode="dark"
+        colorMode={theme}
       >
-        <Background color="#273449" gap={24} />
+        <Background color="var(--graph-grid)" gap={24} />
         <Controls />
-        <MiniMap nodeColor="#6366F1" maskColor="#080d1bcc" />
+        <MiniMap nodeColor="var(--graph-edge)" maskColor="var(--graph-mask)" />
       </ReactFlow>
     </div>
   );

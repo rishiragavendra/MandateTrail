@@ -1,0 +1,156 @@
+{
+  "screens": [
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Security command center",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Agents",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Mandates",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Transactions",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Workflows",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Follow every financial field",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Approvals",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "RedTeamLab",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "ForensicLedger",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(8, 13, 27)",
+      "foreground": "rgb(248, 250, 252)",
+      "hasError": false,
+      "page": "Settings",
+      "theme": "dark"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Security command center",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Agents",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Mandates",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Transactions",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Workflows",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Follow every financial field",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Approvals",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "RedTeamLab",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "ForensicLedger",
+      "theme": "light"
+    },
+    {
+      "background": "rgb(220, 227, 239)",
+      "foreground": "rgb(23, 35, 59)",
+      "hasError": false,
+      "page": "Settings",
+      "theme": "light"
+    }
+  ],
+  "refreshPersistence": true,
+  "navigationPersistence": true,
+  "newTabPersistence": true,
+  "crossTabSync": true,
+  "graphTopologyUnchanged": true,
+  "keyboardEnter": true,
+  "responsiveViewport": {
+    "requested": 390,
+    "observed": 1280,
+    "verified": false
+  },
+  "browserRestart": "not exercised"
+}

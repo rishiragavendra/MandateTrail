@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { api, setCsrf, money, short, when, type Json } from "../lib/api";
 import Provenance from "../components/provenance";
+import { ThemeToggle } from "../components/theme-provider";
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -64,7 +65,7 @@ const navigation = [
   ["Evidence", FileCheck2],
   ["Settings", Settings],
 ] as const;
-const colors = ["#3B82F6", "#38BDF8", "#F59E0B", "#EF4444"];
+const colors = ["var(--chart-allow)", "var(--chart-observe)", "var(--chart-escalate)", "var(--chart-deny)"];
 const statusClass = (v: string) =>
   ["ALLOW", "COMPLETED", "ACTIVE", "SIGNED", "VERIFIED_REGISTRY"].includes(v)
     ? "good"
@@ -432,6 +433,7 @@ function App() {
   if (!user)
     return (
       <main className="login">
+        <div className="login-theme-control"><ThemeToggle /></div>
         <div className="login-art">
           <div className="brand">
             <Orbit size={30} />
@@ -602,6 +604,7 @@ function App() {
             <strong>{page}</strong>
           </div>
           <div className="header-right">
+            <ThemeToggle />
             <label className="global-search">
               <Search size={15} />
               <input
@@ -852,8 +855,9 @@ function App() {
                             </Pie>
                             <Tooltip
                               contentStyle={{
-                                background: "#141D30",
-                                border: "1px solid #273449",
+                                background: "var(--popover)",
+                                color: "var(--popover-foreground)",
+                                border: "1px solid var(--border)",
                                 borderRadius: 8,
                               }}
                             />
