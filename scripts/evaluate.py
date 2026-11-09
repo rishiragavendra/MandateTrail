@@ -1,5 +1,12 @@
-"""Run an explicit larger control evaluation against a running local backend.
-python scripts/evaluate.py --output work/evaluation.json
+"""Run the ablation evaluation against a running local backend.
+
+python scripts/evaluate.py --output docs/evaluation-results.json
+
+This is an ablation study of THIS codebase, not a comparison with any other
+system: `baseline` and `basic` are the same controls switched off. Repetitions
+vary identifiers, nonces and invoice references only, so they are reproducibility
+checks, not independent observations -- the report records the distinct scenario
+count alongside the trial count so the denominators cannot be misread.
 Uses generated demo admin credentials; never prints passwords.
 """
 import argparse
@@ -36,6 +43,17 @@ with httpx.Client(base_url=args.api,timeout=120) as client:
         trials=[t for r in runs for t in r['results'] if t['environment']==environment]
         att=[t for t in trials if t['attack']];ben=[t for t in trials if not t['attack']]
         summary[environment]={'attack_success':[sum(t['attack_success'] for t in att),len(att)],'attack_detection':[sum(t['detected'] for t in att),len(att)],'benign_completion':[sum(t['completed'] for t in ben),len(ben)],'false_intervention':[sum(not t['completed'] for t in ben),len(ben)]}
-    report={'configuration':{'agent':'deterministic-v1','LLM':None,'dataset':'synthetic-v1','attack_variations':'fresh IDs/nonces/refs; fixed financial amounts'},'summary':summary,'runs':runs}
+    distinct=len({r['scenario'] for r in runs})
+    report={'configuration':{
+        'study_type':'ablation of this codebase; not a comparison with any third-party system',
+        'agent':'deterministic-v1','LLM':None,'dataset':'synthetic-v1',
+        'attack_variations':'fresh IDs/nonces/refs; fixed financial amounts',
+        'distinct_scenarios':distinct,
+        'attack_repetitions':args.attack_variations,
+        'sampling_note':('Repetitions vary identifiers only, so they are reproducibility checks rather than '
+                         'independent observations. Read the effective sample as %d distinct scenarios, '
+                         'not as the raw trial count.'%distinct),
+        'baseline_note':'The baseline condition discards the policy decision entirely, so its attack successes are a property of the configuration, not a defeated defence.'},
+        'summary':summary,'runs':runs}
     Path(args.output).write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps(summary,indent=2));print('Saved',args.output)

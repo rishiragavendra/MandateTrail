@@ -45,6 +45,9 @@ import {
   ShieldAlert,
   Eye,
   ChevronDown,
+  Landmark,
+  BrainCircuit,
+  FileWarning,
 } from "lucide-react";
 import { api, setCsrf, money, short, when, type Json } from "../lib/api";
 import Provenance from "../components/provenance";
@@ -61,7 +64,9 @@ const navigation = [
   ["Workflows", GitBranch],
   ["Provenance", Network],
   ["Approvals", CheckCheck],
+  ["Bank Changes", Landmark],
   ["Security Lab", FlaskConical],
+  ["Agent Lab", BrainCircuit],
   ["Evidence", FileCheck2],
   ["Settings", Settings],
 ] as const;
@@ -170,6 +175,8 @@ function App() {
     defaultValues: { email: "admin@mandatetrail.local", password: "" },
   });
   const [form, setForm] = useState<Json>({});
+  const [agentJob, setAgentJob] = useState<Json | null>(null);
+  const [agentLevels, setAgentLevels] = useState<string[]>([]);
   useEffect(() => {
     api("/auth/me")
       .then((u) => {
@@ -203,6 +210,10 @@ function App() {
   const alerts = query("alerts", "/alerts");
   const settings = query("settings", "/settings");
   const scenarios = query("scenarios", "/redteam/scenarios");
+  const labEnvironments = query("labEnvironments", "/redteam/environments");
+  const changes = query("changes", "/beneficiary-changes");
+  const agentStatus = query("agentStatus", "/agent/status");
+  const agentMetrics = query("agentMetrics", "/agent/metrics");
   const metrics = query("metrics", "/redteam/metrics");
   const runs = query("runs", "/redteam/runs");
   const audit = useQuery<Json[]>({
@@ -226,6 +237,11 @@ function App() {
   const ww = (workflows.data || []) as Json[];
   const ap = (approvals.data || []) as Json[];
   const lookup = (id: string) => ss.find((s) => s.id === id)?.name || short(id);
+  const bc = (changes.data || []) as Json[];
+  const envMeta = (labEnvironments.data || []) as Json[];
+  const envLabel = (id: string) =>
+    envMeta.find((e) => e.id === id)?.label ||
+    (id === "protected" ? "MandateTrail" : id === "basic" ? "Ablation B" : "Ablation A");
   useEffect(() => {
     if (!wf && ww.length) setWf(ww[0].id);
   }, [ww, wf]);
@@ -660,7 +676,11 @@ function App() {
                       ? "ForensicLedger"
                       : page === "Provenance"
                         ? "Follow every financial field"
-                        : page}
+                        : page === "Bank Changes"
+                          ? "Dual-control bank account changes"
+                          : page === "Agent Lab"
+                            ? "Agent under adversarial documents"
+                            : page}
               </h1>
               <p>
                 {page === "Overview"
@@ -669,7 +689,11 @@ function App() {
                     ? "Reproduce adversarial workflows. Compare actual control outcomes."
                     : page === "Approvals"
                       ? "Human authority, bound to the exact transaction payload."
-                      : "Authority, data lineage, and execution evidence in one workspace."}
+                      : page === "Bank Changes"
+                        ? "The only route by which a verified beneficiary may move."
+                        : page === "Agent Lab"
+                          ? "Does the model get talked into it, and does the engine still refuse?"
+                          : "Authority, data lineage, and execution evidence in one workspace."}
               </p>
             </div>
             <div className="actions">
@@ -1401,13 +1425,246 @@ function App() {
                   )}
                 </>
               )}
+              {page === "Bank Changes" && (
+                <>
+                  <div className="info-bar">
+                    <Landmark size={18} />
+                    A supplier bank account can only move through propose →
+                    verify out of band → approve. The approver is never the
+                    proposer, and no agent tool can reach this path.
+                  </div>
+                  <Panel
+                    title="Propose a bank account change"
+                    sub="Recorded as a request; nothing changes until a second person approves"
+                  >
+                    <div className="lab-controls">
+                      <label>
+                        SUPPLIER
+                        <select
+                          value={form.bc_supplier || ""}
+                          onChange={(e) =>
+                            setForm({ ...form, bc_supplier: e.target.value })
+                          }
+                        >
+                          <option value="">Select a supplier</option>
+                          {ss.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} · {s.beneficiary_ref}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        NEW BENEFICIARY
+                        <input
+                          className="mono"
+                          placeholder="BEN-NEWBANK-1234"
+                          value={form.bc_ref || ""}
+                          onChange={(e) =>
+                            setForm({ ...form, bc_ref: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        REASON
+                        <input
+                          placeholder="Supplier migrated to a new bank"
+                          value={form.bc_reason || ""}
+                          onChange={(e) =>
+                            setForm({ ...form, bc_reason: e.target.value })
+                          }
+                        />
+                      </label>
+                      <Button
+                        disabled={
+                          busy ||
+                          !form.bc_supplier ||
+                          !form.bc_ref ||
+                          !form.bc_reason
+                        }
+                        onClick={() =>
+                          act(async () => {
+                            await api("/beneficiary-changes", {
+                              supplier_id: form.bc_supplier,
+                              new_beneficiary_ref: form.bc_ref,
+                              reason: form.bc_reason,
+                            });
+                            setForm({ ...form, bc_ref: "", bc_reason: "" });
+                          }, "Change proposed · awaiting out-of-band verification")
+                        }
+                      >
+                        <Plus size={15} />
+                        Propose change
+                      </Button>
+                    </div>
+                  </Panel>
+                  <div className="cards">
+                    {bc.map((change) => (
+                      <Panel
+                        key={change.id}
+                        title={change.supplier_name || lookup(change.supplier_id)}
+                        sub={"Proposed by " + short(change.proposer)}
+                        action={<Badge value={change.status} />}
+                      >
+                        <dl>
+                          <dt>From</dt>
+                          <dd className="mono">{change.previous_beneficiary}</dd>
+                          <dt>To</dt>
+                          <dd className="mono">{change.new_beneficiary}</dd>
+                          <dt>Reason</dt>
+                          <dd>{change.reason}</dd>
+                          {change.verifier && (
+                            <>
+                              <dt>Verified</dt>
+                              <dd>
+                                {change.verification_method} ·{" "}
+                                {change.verification_reference}
+                              </dd>
+                            </>
+                          )}
+                          {change.approver && (
+                            <>
+                              <dt>Approved by</dt>
+                              <dd>
+                                {short(change.approver)} ·{" "}
+                                {change.approver_role}
+                              </dd>
+                            </>
+                          )}
+                        </dl>
+                        {change.status === "PROPOSED" && (
+                          <div className="lab-controls">
+                            <label>
+                              VERIFICATION METHOD
+                              <select
+                                value={form["m_" + change.id] || "PHONE_CALLBACK"}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    ["m_" + change.id]: e.target.value,
+                                  })
+                                }
+                              >
+                                <option value="PHONE_CALLBACK">
+                                  Phone callback
+                                </option>
+                                <option value="IN_PERSON">In person</option>
+                                <option value="SIGNED_LETTER">
+                                  Signed letter
+                                </option>
+                                <option value="KNOWN_CONTACT">
+                                  Known contact
+                                </option>
+                              </select>
+                            </label>
+                            <label>
+                              REFERENCE
+                              <input
+                                placeholder="Called the number on file"
+                                value={form["r_" + change.id] || ""}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    ["r_" + change.id]: e.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                        )}
+                        <div className="card-actions">
+                          {change.status === "PROPOSED" && (
+                            <Button
+                              disabled={busy || !form["r_" + change.id]}
+                              onClick={() =>
+                                act(
+                                  () =>
+                                    api(
+                                      "/beneficiary-changes/" +
+                                        change.id +
+                                        "/verify",
+                                      {
+                                        method:
+                                          form["m_" + change.id] ||
+                                          "PHONE_CALLBACK",
+                                        reference: form["r_" + change.id],
+                                      },
+                                    ),
+                                  "Out-of-band verification recorded",
+                                )
+                              }
+                            >
+                              <Check size={15} />
+                              Record verification
+                            </Button>
+                          )}
+                          {change.status === "VERIFIED" && (
+                            <Button
+                              disabled={busy}
+                              onClick={() =>
+                                act(
+                                  () =>
+                                    api(
+                                      "/beneficiary-changes/" +
+                                        change.id +
+                                        "/approve",
+                                      {},
+                                    ),
+                                  "Change approved and signed",
+                                )
+                              }
+                            >
+                              <KeyRound size={15} />
+                              Approve and apply
+                            </Button>
+                          )}
+                          {["PROPOSED", "VERIFIED"].includes(change.status) && (
+                            <Button
+                              secondary
+                              onClick={() =>
+                                act(
+                                  () =>
+                                    api(
+                                      "/beneficiary-changes/" +
+                                        change.id +
+                                        "/reject",
+                                      { reason: "Rejected from review" },
+                                    ),
+                                  "Change rejected",
+                                )
+                              }
+                            >
+                              Reject
+                            </Button>
+                          )}
+                          <Button
+                            secondary
+                            onClick={() =>
+                              setDetail({
+                                title: "Bank change record",
+                                ...change,
+                              })
+                            }
+                          >
+                            Inspect
+                          </Button>
+                        </div>
+                      </Panel>
+                    ))}
+                  </div>
+                  {!bc.length && (
+                    <Empty text="No bank account changes requested. Propose one above to exercise dual control." />
+                  )}
+                </>
+              )}
               {page === "Security Lab" && (
                 <>
                   <div className="info-bar">
                     <FlaskConical size={18} />
-                    Isolated synthetic trials · deterministic procurement agent
-                    · results measure configured controls, not general AI
-                    security.
+                    Ablation study of this codebase, not a comparison with any
+                    other product. The two reduced conditions are these same
+                    controls switched off, so a failure shows which control
+                    carries which attack.
                   </div>
                   <Panel
                     title="Scenario control"
@@ -1441,11 +1698,7 @@ function App() {
                                 )
                               }
                             />
-                            {e === "protected"
-                              ? "MandateTrail"
-                              : e === "basic"
-                                ? "Basic controls"
-                                : "Baseline"}
+                            {envLabel(e)}
                           </label>
                         ))}
                       </div>
@@ -1640,6 +1893,215 @@ function App() {
                         <ChevronRight size={16} />
                       </button>
                     ))}
+                  </Panel>
+                </>
+              )}
+              {page === "Agent Lab" && (
+                <>
+                  <div className="info-bar">
+                    <BrainCircuit size={18} />
+                    A real language model reads untrusted invoice text and
+                    chooses which account to pay. Two numbers are kept apart:
+                    whether the model was manipulated, and whether the attacker
+                    was paid.
+                  </div>
+                  <Panel
+                    title="Model"
+                    sub="Local inference · no key, no external provider, synthetic documents only"
+                    action={
+                      <Badge
+                        value={
+                          agentStatus.data?.available ? "READY" : "UNAVAILABLE"
+                        }
+                      />
+                    }
+                  >
+                    <dl>
+                      <dt>Model</dt>
+                      <dd className="mono">{agentStatus.data?.model}</dd>
+                      <dt>Endpoint</dt>
+                      <dd className="mono">{agentStatus.data?.url}</dd>
+                      {agentStatus.data?.reason && (
+                        <>
+                          <dt>Reason</dt>
+                          <dd>{agentStatus.data.reason}</dd>
+                        </>
+                      )}
+                    </dl>
+                    {!agentStatus.data?.available && (
+                      <div className="info-bar">
+                        <FileWarning size={18} />
+                        Start Ollama and pull the model, then reload. Every
+                        other screen works without it.
+                      </div>
+                    )}
+                    <div className="environment-checks">
+                      {((agentStatus.data?.levels || []) as Json[]).map((l) => (
+                        <label key={l.id}>
+                          <input
+                            type="checkbox"
+                            checked={
+                              !agentLevels.length || agentLevels.includes(l.id)
+                            }
+                            onChange={(ev) =>
+                              setAgentLevels((prev) => {
+                                const base = prev.length
+                                  ? prev
+                                  : ((agentStatus.data?.levels || []) as Json[]).map(
+                                      (x) => x.id as string,
+                                    );
+                                return ev.target.checked
+                                  ? [...base, l.id]
+                                  : base.filter((x) => x !== l.id);
+                              })
+                            }
+                          />
+                          {l.expects_substitution ? "ATTACK" : "CONTROL"} ·{" "}
+                          {l.id}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="card-actions">
+                      <Button
+                        disabled={busy || !agentStatus.data?.available}
+                        onClick={() =>
+                          act(async () => {
+                            const sup = ss[0];
+                            const agent = (await api("/agents", {
+                              name: "Atlas LLM · " + new Date().toISOString().slice(11, 19),
+                            })) as Json;
+                            const mandate = (await api("/mandates", {
+                              name: "Agent lab mandate",
+                              agent_id: agent.id,
+                              suppliers: ss.map((s) => s.id),
+                            })) as Json;
+                            const job = (await api("/agent/runs", {
+                              mandate_id: mandate.id,
+                              supplier_id: sup.id,
+                              ...(agentLevels.length
+                                ? { levels: agentLevels }
+                                : {}),
+                            })) as Json;
+                            setAgentJob(job);
+                          }, "Agent batch started · poll below for progress")
+                        }
+                      >
+                        {busy ? (
+                          <LoaderCircle className="spin" size={15} />
+                        ) : (
+                          <Play size={15} />
+                        )}
+                        Run agent against documents
+                      </Button>
+                      {agentJob?.job_id && (
+                        <Button
+                          secondary
+                          onClick={() =>
+                            act(async () => {
+                              const j = (await api(
+                                "/agent/runs/" + agentJob.job_id,
+                              )) as Json;
+                              setAgentJob(j);
+                            }, "")
+                          }
+                        >
+                          <RefreshCw size={15} />
+                          Refresh progress
+                        </Button>
+                      )}
+                    </div>
+                  </Panel>
+                  {agentJob && (
+                    <Panel
+                      title="Run progress"
+                      sub={
+                        (agentJob.completed ?? 0) +
+                        " of " +
+                        ((agentJob.levels || []).length || 0) +
+                        " documents"
+                      }
+                      action={<Badge value={agentJob.state || "RUNNING"} />}
+                    >
+                      <div className="table-wrap">
+                        <table>
+                        <thead>
+                          <tr>
+                            <th>Document</th>
+                            <th>Model paid</th>
+                            <th>Manipulated</th>
+                            <th>Engine</th>
+                            <th>Reason codes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {((agentJob.results || []) as Json[]).map((r, i) => (
+                            <tr key={i}>
+                              <td>{r.injection_level}</td>
+                              <td className="mono">
+                                {r.proposed_beneficiary || "—"}
+                              </td>
+                              <td>
+                                <Badge
+                                  value={
+                                    r.error
+                                      ? "ERROR"
+                                      : r.agent_complied
+                                        ? "DENY"
+                                        : "ALLOW"
+                                  }
+                                />
+                              </td>
+                              <td>{r.engine_outcome || r.error}</td>
+                              <td className="tags">
+                                {((r.reason_codes || []) as string[]).map(
+                                  (c) => (
+                                    <span key={c}>{c}</span>
+                                  ),
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        </table>
+                      </div>
+                    </Panel>
+                  )}
+                  <Panel
+                    title="Separated measurements"
+                    sub="Model susceptibility and control effectiveness are not the same number"
+                  >
+                    <div className="metric-grid">
+                      {[
+                        [
+                          "Model manipulated",
+                          agentMetrics.data?.agent_compliance_rate,
+                          "The model proposed the attacker's account",
+                        ],
+                        [
+                          "Attacker paid",
+                          agentMetrics.data?.attacker_paid_rate,
+                          "A payment actually reached that account",
+                        ],
+                        [
+                          "Blocked when manipulated",
+                          agentMetrics.data
+                            ?.engine_block_rate_given_compliance,
+                          "Controls refused despite the model complying",
+                        ],
+                      ].map(([label, ratio, sub]) => (
+                        <div className="metric" key={String(label)}>
+                          <div>
+                            <span>{String(label)}</span>
+                          </div>
+                          <strong>
+                            {(ratio as Json)?.numerator ?? 0} /{" "}
+                            {(ratio as Json)?.denominator ?? 0}
+                          </strong>
+                          <small>{String(sub)}</small>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="muted">{agentMetrics.data?.note}</p>
                   </Panel>
                 </>
               )}

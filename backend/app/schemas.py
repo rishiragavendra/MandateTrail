@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal
 
-TOOLS = ['mandate_get', 'supplier_lookup', 'invoice_read', 'purchase_order_create', 'payment_prepare', 'payment_authorize', 'payment_execute', 'workflow_trace']
+TOOLS = ['mandate_get', 'supplier_lookup', 'invoice_document_read', 'invoice_read', 'purchase_order_create', 'payment_prepare', 'payment_authorize', 'payment_execute', 'workflow_trace']
 class Strict(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
 class Login(Strict):
@@ -24,6 +24,15 @@ class MandateInput(Strict):
 class SupplierInput(Strict):
     name: str = Field(min_length=2, max_length=100)
     beneficiary_ref: str = Field(pattern='^BEN-[A-Z0-9-]{3,40}$')
+class BeneficiaryChangeInput(Strict):
+    supplier_id: str
+    new_beneficiary_ref: str = Field(pattern='^BEN-[A-Z0-9-]{3,40}$')
+    reason: str = Field(min_length=3, max_length=200)
+class VerificationInput(Strict):
+    method: Literal['PHONE_CALLBACK', 'IN_PERSON', 'SIGNED_LETTER', 'KNOWN_CONTACT']
+    reference: str = Field(min_length=3, max_length=120)
+class RejectionInput(Strict):
+    reason: str = Field(min_length=3, max_length=200)
 class WorkflowInput(Strict):
     mandate_id: str
     title: str = Field(default='Procurement workflow', max_length=100)
@@ -54,6 +63,13 @@ class GatewayInput(Strict):
     workflow_id: str
     session_id: str
     arguments: dict = Field(default_factory=dict)
+class AgentRunInput(Strict):
+    mandate_id: str
+    supplier_id: str
+    levels: list[str] = Field(default_factory=list)
+    amount_minor: int = Field(default=48000, gt=0, le=1000000000)
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    repetitions: int = Field(default=1, ge=1, le=10)
 class LabInput(Strict):
     scenario: str
     environments: list[Literal['baseline', 'basic', 'protected']] = Field(default_factory=lambda: ['baseline', 'basic', 'protected'])

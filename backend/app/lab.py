@@ -1,22 +1,40 @@
-"""Deterministic synthetic control trials. No LLM effectiveness is claimed."""
+"""Deterministic synthetic control trials across three ABLATION conditions.
+
+These are not competing products and no comparison with any third-party system is
+implied or claimed. `baseline` and `basic` are control conditions in which parts of
+this same codebase are switched off, so their failures show which control carries
+which attack -- not that any other system would fail. No LLM is involved, so no
+model-level effectiveness is claimed either.
+"""
+import secrets
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import select, update
 from . import core as c
-from .db import Record, Mandate, Approval, Organization, SessionLocal, engine, now, uid
+from .db import Record, Mandate, Approval, Organization, SessionLocal, User, engine, now, uid
 from .schemas import MandateInput
-from .crypto import digest
+from .crypto import digest, password_hash, sign
+
+ENVIRONMENTS = [
+    ('baseline', 'Ablation A · no authorization layer',
+     'Control condition: the policy decision is computed but discarded, and the experimental adapter executes whatever is proposed. Shows what each scenario does with the control set switched off.'),
+    ('basic', 'Ablation B · per-call checks only',
+     'Control condition: an amount ceiling and tool allowlist are applied to each call in isolation, with no provenance, no cross-session state and no execution binding.'),
+    ('protected', 'MandateTrail · full control set',
+     'Signed mandate, field provenance, temporal policy, exact-payload approval, execution binding and hash-chained audit, all active.'),
+]
+ENVIRONMENT_LABELS = {e[0]: {'label': e[1], 'description': e[2], 'control_condition': e[0] != 'protected'} for e in ENVIRONMENTS}
 
 SCENARIOS = [
-    ('invoice_injection', 'Indirect invoice prompt injection', True),
-    ('cross_session', 'Cross-session beneficiary poisoning', True),
-    ('beneficiary_substitution', 'Supplier beneficiary substitution', True),
+    ('invoice_injection', 'Indirect invoice instruction, used within one session', True),
+    ('cross_session', 'Cross-session beneficiary poisoning, persisted then retrieved', True),
+    ('beneficiary_substitution', 'Substituted account submitted while citing a genuine lookup', True),
     ('payment_splitting', 'Payment splitting beyond aggregate', True),
     ('approval_replay', 'Single-use approval replay', True),
     ('delegation', 'Delegation privilege escalation', True),
     ('payload_mutation', 'Payload changed after approval', True),
     ('concurrent_budget', 'Concurrent budget reservation race', True),
     ('duplicate_invoice', 'Duplicate invoice formatting variant', True),
-    ('forged_approval', 'Forged human approval metadata', True),
+    ('forged_approval', 'Validly signed approval from a user who may not approve', True),
     ('valid_payment', 'Valid supplier payment', False),
     ('correct_beneficiary', 'Verified beneficiary payment', False),
     ('formatting', 'Harmless invoice formatting', False),
@@ -29,30 +47,35 @@ SCENARIOS = [
 def fixture(db, org, actor, approval=100000, aggregate=1500000):
     a = c.add(db, org, 'agent', {'name': 'RedTeam isolated agent', 'capabilities': c.TOOLS, 'active': True, 'parent_agent': None, 'token_hash': digest(uid())})
     s = c.add(db, org, 'supplier', {'name': 'Synthetic supplier', 'beneficiary_ref': 'BEN-ORBITAL-1042', 'account_mask': '•••• 1042', 'active': True})
+    # An approval is only valid from a human in the same tenant, so the experiment owns one.
+    # No usable password is set: this identity exists to be signed with, never to log in.
+    approver = User(id=uid(), org=org, email='redteam-approver-' + uid() + '@experiment.local',
+                    role=c.APPROVER_ROLES[1], password=password_hash(secrets.token_urlsafe(32)))
+    db.add(approver); db.flush()
     m = c.create_mandate(db, org, actor, MandateInput(name='Isolated experiment', agent_id=a.id, suppliers=[s.id], approval_above=approval, aggregate=aggregate))
-    return a, s, m
+    return a, s, m, approver
 
 def run_environment(db, org, actor, scenario, env):
     is_attack = dict((s[0], s[2]) for s in SCENARIOS)[scenario]
-    a, s, m = fixture(db, org, actor, approval=0 if scenario in ('approval_replay', 'payload_mutation', 'forged_approval', 'human_approved') else 100000, aggregate=75000 if scenario in ('payment_splitting', 'concurrent_budget') else 1500000)
+    a, s, m, approver = fixture(db, org, actor, approval=0 if scenario in ('approval_replay', 'payload_mutation', 'forged_approval', 'human_approved') else 100000, aggregate=75000 if scenario in ('payment_splitting', 'concurrent_budget') else 1500000)
     txs, events = [], []
     protected = env == 'protected'
-    poison = scenario in ('invoice_injection', 'cross_session', 'beneficiary_substitution')
+    attack_path = scenario if scenario in c.ATTACK_TITLES else None
     count = 2 if scenario in ('payment_splitting', 'authorized_split', 'concurrent_budget', 'duplicate_invoice', 'approval_replay') else 1
     ref = 'LAB-' + uid()[:8]
     if scenario == 'supplier_lookup':
         w = c.create_workflow(db, org, actor, m.id, 'Read-only control'); session = c.create_session(db, org, a.id, w.id)
         c.gateway(db, org, a.id, 'supplier_lookup', w.id, session.id, {'supplier_id': s.id})
-        return {'environment': env, 'attack': False, 'completed': True, 'attack_success': False, 'detected': False, 'transactions': [], 'timeline': [{'type': 'supplier.lookup', 'outcome': 'OBSERVE', 'reason_codes': ['AUTHORIZED_READ_ONLY']}], 'latency_ms': 0, 'workflow_id': w.id, 'payload_integrity': True, 'audit_complete': True, 'executions': 0}
+        return {'environment': env, **ENVIRONMENT_LABELS[env], 'attack': False, 'completed': True, 'attack_success': False, 'detected': False, 'transactions': [], 'timeline': [{'type': 'supplier.lookup', 'outcome': 'OBSERVE', 'reason_codes': ['AUTHORIZED_READ_ONLY']}], 'latency_ms': 0, 'workflow_id': w.id, 'payload_integrity': True, 'audit_complete': True, 'executions': 0}
     # Each environment gets its own real invoice/session/provenance records.
     for i in range(count):
         invoice = ref if i == 0 else (ref.lower().replace('-', ' - ') if scenario == 'duplicate_invoice' else ref + '-' + str(i))
-        tx = c.procurement(db, org, actor, m.id, s.id, 48000, invoice, poison=poison, formatting=scenario == 'formatting', auto_execute=False, simulator_outcome='OUTCOME_UNKNOWN' if scenario == 'idempotent_retry' else 'COMPLETED')
+        tx = c.procurement(db, org, actor, m.id, s.id, 48000, invoice, attack=attack_path, formatting=scenario == 'formatting', auto_execute=False, simulator_outcome='OUTCOME_UNKNOWN' if scenario == 'idempotent_retry' else 'COMPLETED')
         txs.append(tx)
     first_approval = None
     if scenario in ('approval_replay', 'payload_mutation', 'human_approved'):
         ap = db.scalar(select(Approval).where(Approval.transaction_id == txs[0].id))
-        c.sign_approval(db, org, actor, ap.id); first_approval = ap.id
+        c.sign_approval(db, org, approver.id, ap.id); first_approval = ap.id
     if scenario == 'payload_mutation':
         p = {**txs[0].data['payload'], 'amount_minor': 49000}
         txs[0].data = {**txs[0].data, 'payload': p}
@@ -62,7 +85,17 @@ def run_environment(db, org, actor, scenario, env):
         a.data = {**a.data, 'parent_agent': parent.id}
         c.audit(db, org, 'lab.delegation_attempt', actor, txs[0].parent, data={'parent': parent.id, 'child': a.id})
     if scenario == 'forged_approval':
-        c.audit(db, org, 'lab.forged_metadata', a.id, txs[0].parent, data={'user_confirmed': True, 'claimed_role': 'Administrator', 'trusted': False})
+        # A genuine forgery attempt: a validly signed approval naming a user who may not approve,
+        # claiming a role they do not hold. Only the engine's own authority re-check can catch it.
+        ap = db.scalar(select(Approval).where(Approval.transaction_id == txs[0].id))
+        observer = User(id=uid(), org=org, email='redteam-observer-' + uid() + '@experiment.local',
+                        role='Auditor', password=password_hash(secrets.token_urlsafe(32)))
+        db.add(observer); db.flush()
+        ap.approver, ap.approver_role, ap.status = observer.id, 'Administrator', 'SIGNED'
+        ap.signature = sign(c.approval_binding(ap), 'approval')
+        first_approval = ap.id
+        c.audit(db, org, 'lab.forged_approval_injected', a.id, txs[0].parent,
+                data={'approval_id': ap.id, 'claimed_role': 'Administrator', 'actual_role': observer.role, 'signature_valid': True})
     if scenario == 'concurrent_budget' and protected:
         # Commit proposals before separate connections race the conditional budget update.
         db.commit()
@@ -77,7 +110,7 @@ def run_environment(db, org, actor, scenario, env):
     else:
         for i, tx in enumerate(txs):
             if protected:
-                approval = first_approval if scenario in ('approval_replay', 'payload_mutation', 'human_approved') else None
+                approval = first_approval if scenario in ('approval_replay', 'payload_mutation', 'human_approved', 'forged_approval') else None
                 result = c.execute(db, org, a.id, tx.id, approval)
                 if scenario == 'idempotent_retry': result = c.execute(db, org, a.id, tx.id)
             else:
@@ -98,7 +131,7 @@ def run_environment(db, org, actor, scenario, env):
     detected = is_attack and any(e['decision'] in ('DENY', 'ESCALATE') for e in events)
     completed = not is_attack and all(e['outcome'] in ('COMPLETED', 'OUTCOME_UNKNOWN') for e in events)
     integrity = all(t.data['digest'] == digest(t.data['payload']) for t in txs if t.data['outcome'] == 'COMPLETED')
-    return {'environment': env, 'attack': is_attack, 'attack_success': bool(success), 'detected': bool(detected), 'completed': bool(completed), 'transactions': [t.id for t in txs], 'workflow_id': txs[0].parent, 'timeline': events, 'latency_ms': sum(t.data['decision'].get('latency_ms', 0) for t in txs) / len(txs), 'payload_integrity': integrity, 'audit_complete': all(t.data.get('receipt_id') or t.data['outcome'] in ('BLOCKED', 'AWAITING_APPROVAL') for t in txs), 'executions': len(executed)}
+    return {'environment': env, **ENVIRONMENT_LABELS[env], 'attack': is_attack, 'attack_success': bool(success), 'detected': bool(detected), 'completed': bool(completed), 'transactions': [t.id for t in txs], 'workflow_id': txs[0].parent, 'timeline': events, 'latency_ms': sum(t.data['decision'].get('latency_ms', 0) for t in txs) / len(txs), 'payload_integrity': integrity, 'audit_complete': all(t.data.get('receipt_id') or t.data['outcome'] in ('BLOCKED', 'AWAITING_APPROVAL') for t in txs), 'executions': len(executed)}
 
 def run(db, org, actor, scenario, environments):
     c.require(scenario in {s[0] for s in SCENARIOS}, 'UNKNOWN_SCENARIO')
@@ -121,6 +154,6 @@ def metrics(runs):
         cross = [t for r in runs if r.data['scenario'] == 'cross_session' for t in r.data['results'] if t['environment'] == env]
         ratio = lambda n, d: {'numerator': n, 'denominator': d, 'percent': round(n / d * 100, 1) if d else None}
         lat = sorted(t['latency_ms'] for t in trials)
-        output[env] = {'attack_success_rate': ratio(sum(t['attack_success'] for t in attacks), len(attacks)), 'attack_detection_rate': ratio(sum(t['detected'] for t in attacks), len(attacks)), 'false_intervention_rate': ratio(sum(not t['completed'] for t in benign), len(benign)), 'benign_completion_rate': ratio(sum(t['completed'] for t in benign), len(benign)), 'payload_integrity_rate': ratio(sum(t['executions'] for t in trials if t['payload_integrity']), sum(t['executions'] for t in trials)), 'cross_session_detection_rate': ratio(sum(t['detected'] for t in cross), len(cross)), 'audit_completeness': ratio(sum(len(t['timeline']) for t in trials if t['audit_complete']), sum(len(t['timeline']) for t in trials)), 'latency_median_ms': lat[len(lat)//2] if lat else None, 'latency_p95_ms': lat[min(len(lat)-1, int(len(lat)*.95))] if lat else None, 'trials': len(trials)}
+        output[env] = {**ENVIRONMENT_LABELS[env], 'attack_success_rate': ratio(sum(t['attack_success'] for t in attacks), len(attacks)), 'attack_detection_rate': ratio(sum(t['detected'] for t in attacks), len(attacks)), 'false_intervention_rate': ratio(sum(not t['completed'] for t in benign), len(benign)), 'benign_completion_rate': ratio(sum(t['completed'] for t in benign), len(benign)), 'payload_integrity_rate': ratio(sum(t['executions'] for t in trials if t['payload_integrity']), sum(t['executions'] for t in trials)), 'cross_session_detection_rate': ratio(sum(t['detected'] for t in cross), len(cross)), 'audit_completeness': ratio(sum(len(t['timeline']) for t in trials if t['audit_complete']), sum(len(t['timeline']) for t in trials)), 'latency_median_ms': lat[len(lat)//2] if lat else None, 'latency_p95_ms': lat[min(len(lat)-1, int(len(lat)*.95))] if lat else None, 'trials': len(trials)}
     return output
 
