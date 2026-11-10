@@ -33,6 +33,13 @@ class Record(Base):
     parent: Mapped[str | None] = mapped_column(ForeignKey('records.id'), nullable=True, index=True)
     created: Mapped[str] = mapped_column(String, default=now)
     data: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Provenance chain edges the database enforces. The same ids remain in `data` for
+    # wire compatibility; core.provenance_verify cross-checks the two, and the
+    # organization and kind constraints a foreign key cannot express. NULL means the
+    # row predates revision 0003, not that it has no edge.
+    source_ref: Mapped[str | None] = mapped_column(ForeignKey('records.id'), nullable=True, index=True)
+    prior_ref: Mapped[str | None] = mapped_column(ForeignKey('records.id'), nullable=True, index=True)
+    session_ref: Mapped[str | None] = mapped_column(ForeignKey('records.id'), nullable=True, index=True)
 
 class Mandate(Base):
     __tablename__ = 'mandates'
@@ -55,6 +62,7 @@ class Approval(Base):
     expires: Mapped[str] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default='PENDING')
     approver: Mapped[str | None] = mapped_column(ForeignKey('users.id'), nullable=True)
+    approver_role: Mapped[str | None] = mapped_column(String, nullable=True)
     signature: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 class Reservation(Base):
@@ -63,10 +71,13 @@ class Reservation(Base):
     org: Mapped[str] = mapped_column(ForeignKey('organizations.id'), index=True)
     mandate_id: Mapped[str] = mapped_column(ForeignKey('mandates.id'))
     transaction_id: Mapped[str] = mapped_column(ForeignKey('records.id'), unique=True)
-    idempotency: Mapped[str] = mapped_column(String, unique=True)
+    # Scoped to the organization, like invoice_key beside it. A global constraint would let
+    # one tenant claim a guessable key and block another tenant's execution permanently.
+    idempotency: Mapped[str] = mapped_column(String)
     invoice_key: Mapped[str] = mapped_column(String)
     amount: Mapped[int] = mapped_column(Integer)
-    __table_args__ = (UniqueConstraint('org', 'invoice_key'),)
+    __table_args__ = (UniqueConstraint('org', 'invoice_key'),
+                      UniqueConstraint('org', 'idempotency', name='uq_reservation_org_idempotency'))
 
 class Audit(Base):
     __tablename__ = 'audit_events'

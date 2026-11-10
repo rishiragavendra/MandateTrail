@@ -17,7 +17,12 @@ def mandate_get(): return call('mandate_get', {})
 @mcp.tool()
 def supplier_lookup(supplier_id: str): return call('supplier_lookup', {'supplier_id':supplier_id})
 @mcp.tool()
-def invoice_read(supplier_id: str, amount_minor: int, invoice_ref: str): return call('invoice_read', {'supplier_id':supplier_id,'amount_minor':amount_minor,'invoice_ref':invoice_ref})
+def invoice_document_read(document_id: str): return call('invoice_document_read', {'document_id':document_id})
+@mcp.tool()
+def invoice_read(supplier_id: str, amount_minor: int, invoice_ref: str, beneficiary: str | None = None):
+    args = {'supplier_id':supplier_id,'amount_minor':amount_minor,'invoice_ref':invoice_ref}
+    if beneficiary: args['beneficiary'] = beneficiary
+    return call('invoice_read', args)
 @mcp.tool()
 def purchase_order_create(supplier_id: str, amount_minor: int, currency: str, invoice_ref: str): return call('purchase_order_create', {'supplier_id':supplier_id,'amount_minor':amount_minor,'currency':currency,'invoice_ref':invoice_ref})
 @mcp.tool()
